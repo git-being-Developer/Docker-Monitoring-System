@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Container Monitoring with ChatGPT</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+        }
+
+        h1 {
+            text-align: center;
+            color: #4a90e2;
+        }
+
+        #containerStatus {
+            margin: 20px auto;
+            max-width: 1200px; /* Increased width */
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
+            background-color: #fff;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            font-size: 18px; /* Increased font size */
+        }
+
+        table, th, td {
+            border: 1px solid #ddd;
+        }
+
+        th, td {
+            padding: 16px; /* Increased padding */
+            text-align: left;
+            font-size: 16px; /* Text size in table cells */
+        }
+
+        th {
+            background-color: #4a90e2;
+            color: white;
+            font-size: 18px; /* Slightly larger font for header */
+        }
+
+        tr:hover {
+            background-color: #f1f1f1;
+        }
+
+        .logs, .analysis {
+            white-space: pre-wrap;
+            max-height: 300px; /* Increased max height */
+            overflow-y: auto;
+            background-color: #f9f9f9;
+            padding: 15px; /* Increased padding */
+            border: 1px solid #ddd;
+            margin: 10px 0;
+            border-radius: 5px;
+            font-size: 14px; /* Slightly larger text for logs */
+            line-height: 1.5; /* Improved readability with line height */
+        }
+
+        .container-info {
+            margin-bottom: 20px;
+        }
+
+        .failed {
+            background-color: #f8d7da; /* Light red */
+        }
+
+        .running {
+            background-color: #d4edda; /* Light green */
+        }
+
+        .status {
+            padding: 8px 12px; /* Slightly larger padding for status */
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 14px; /* Slightly larger font for status */
+        }
+
+        .failed .status {
+            background-color: #dc3545;
+            color: white;
+        }
+
+        .running .status {
+            background-color: #28a745;
+            color: white;
+        }
+
+        .notification-btn {
+            display: block;
+            text-align: center;
+            padding: 12px 18px; /* Larger button */
+            background-color: #4a90e2;
+            color: white;
+            text-decoration: none;
+            font-size: 20px; /* Increased font size */
+            border-radius: 5px;
+            margin: 20px auto;
+            width: 300px; /* Wider button */
+            transition: background-color 0.3s;
+        }
+
+        .notification-btn:hover {
+            background-color: #357abd;
+        }
+    </style>
+</head>
+<body>
+    <h1>Container Monitoring with ChatGPT</h1>
+
+    <div id="containerStatus"></div>
+
+    <script>
+        // Request notification permission on page load
+        document.addEventListener("DOMContentLoaded", () => {
+            if (Notification.permission !== "granted") {
+                Notification.requestPermission();
+            }
+            fetchContainerStatuses();
+        });
+
+        // Function to fetch container statuses
+        async function fetchContainerStatuses() {
+            try {
+                const response = await fetch("http://localhost:8080/containers");
+                const containers = await response.json();
+                const containerStatusDiv = document.getElementById("containerStatus");
+                containerStatusDiv.innerHTML = ''; // Clear previous data
+
+                if (Object.keys(containers).length === 0) {
+                    containerStatusDiv.innerHTML = '<p>No containers found or all are running.</p>';
+                    return;
+                }
+
+                // Create table for displaying container statuses
+                const table = document.createElement('table');
+                const headerRow = `
+                    <tr>
+                        <th>Container ID</th>
+                        <th>Container Name</th>
+                        <th>Status</th>
+                        <th>Error Logs</th>
+                        <th>Possible Fix (ChatGPT)</th>
+                    </tr>`;
+                table.innerHTML = headerRow;
+
+                for (let id in containers) {
+                    const container = containers[id];
+                    const cleanLogs = cleanLogsForDisplay(container.logs);
+                    const row = document.createElement('tr');
+                    
+                    // Highlight row based on status (red for failed, green for running)
+                    if (container.status === "exited" || container.status === "dead") {
+                        row.classList.add('failed');
+                        sendNotification(container); // Send notification for failed containers
+                    } else {
+                        row.classList.add('running');
+                    }
+
+                    row.innerHTML = `
+                        <td>${container.id}</td>
+                        <td>${container.name}</td>
+                        <td><span class="status">${container.status}</span></td>
+                        <td><div class="logs">${cleanLogs}</div></td>
+                        <td><div class="analysis">${container.chatgpt_response}</div></td>
+                    `;
+
+                    table.appendChild(row);
+                }
+
+                containerStatusDiv.appendChild(table);
+            } catch (error) {
+                console.error("Error fetching container statuses", error);
+            }
+        }
+
+        // Function to send a browser notification
+        function sendNotification(container) {
+            if (Notification.permission === "granted") {
+                const notification = new Notification("Container Failure Alert", {
+                    body: `Container ${container.name} (${container.id}) has ${container.status}.`,
+                    icon: "https://via.placeholder.com/48" // You can replace this with a custom icon
+                });
+
+                // Optional: Handle notification click (e.g., focus tab or take user to container details)
+                notification.onclick = function () {
+                    window.focus(); // Brings the tab to focus
+                };
+            }
+        }
+
+        // Function to clean logs for better display
+        function cleanLogsForDisplay(logs) {
+            // Replace non-printable characters like null, control characters, etc.
+            return logs.replace(/[\x00-\x1F\x7F]/g, ''); // Cleans non-printable ASCII characters
+        }
+
+        // Fetch container statuses on load
+        fetchContainerStatuses();
+
+        // Optionally, you can set an interval to periodically check for container statuses
+        setInterval(fetchContainerStatuses, 20000); // Fetch every 60 seconds
+    </script>
+</body>
+</html>
